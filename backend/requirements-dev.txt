@@ -1,0 +1,7 @@
+# Dependencias para desarrollo local (sin GPU / image generation)
+# Para Docker usa requirements.txt completo
+
+-r requirements.txt
+
+# Sobrescribir: excluir paquetes GPU-only en desarrollo local
+# (instalar manualmente si tienes GPU: pip install torch diffusers transformers accelerate)
