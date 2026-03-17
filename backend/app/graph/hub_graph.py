@@ -1,19 +1,19 @@
 """
 Grafo LangGraph principal del AI Assistant Hub.
 
-Fase 4: routing condicional por intent
-  supervisor → [communications_agent | agenda_agent | echo (placeholder fases 5-6)] → response
+Fase 5: routing condicional por intent
+  supervisor → [communications_agent | agenda_agent | profiling_agent | echo] → response
 
 Flujo:
   [WhatsApp Webhook]
         ↓
   [supervisor]            ← identifica paciente, clasifica intención
         ↓ (conditional)
-  ┌─────┴────────────────┬────────────────────┐
-  │ COMMUNICATION/UNKNOWN│ SCHEDULING          │ PROFILING/CONTENT
-  ▼                      ▼                    ▼
-  [communications_agent] [agenda_agent]       [echo]
-        └──────────────┬──────────────────────┘
+  ┌──────┬──────────────┬──────────────┬──────────┐
+  │COMM  │ SCHEDULING   │ PROFILING    │ CONTENT  │
+  ▼      ▼              ▼              ▼          ▼
+  [comm] [agenda]  [profiling]       [echo]   [echo]
+        └──────────────┬──────────────────────────┘
                        ▼
                    [response]     ← envía por WhatsApp + audit log
 """
@@ -30,6 +30,7 @@ from app.graph.nodes import echo_node, response_node
 from app.agents.supervisor import supervisor_node
 from app.agents.communications.agent import communications_agent_node
 from app.agents.agenda.agent import agenda_agent_node
+from app.agents.profiling.agent import profiling_agent_node
 from app.integrations.whatsapp.schemas import IncomingMessage
 
 log = structlog.get_logger()
@@ -55,6 +56,12 @@ async def _communications_wrapper(state: GlobalHubState) -> dict:
 async def _agenda_wrapper(state: GlobalHubState) -> dict:
     # El agente gestiona su propia sesión de DB internamente
     new_state = await agenda_agent_node(state)
+    return new_state.model_dump()
+
+
+async def _profiling_wrapper(state: GlobalHubState) -> dict:
+    # El agente gestiona su propia sesión de DB internamente
+    new_state = await profiling_agent_node(state)
     return new_state.model_dump()
 
 
@@ -89,7 +96,10 @@ def _route_after_supervisor(state: GlobalHubState) -> str:
     if intent == IntentType.SCHEDULING:
         return "agenda_agent"
 
-    # Fases 5-6: estos agentes aún no están implementados
+    if intent == IntentType.PROFILING:
+        return "profiling_agent"
+
+    # Fase 6: content agent aún no implementado
     return "echo"
 
 
@@ -101,6 +111,7 @@ def _build_graph():
     graph.add_node("supervisor", _supervisor_wrapper)
     graph.add_node("communications_agent", _communications_wrapper)
     graph.add_node("agenda_agent", _agenda_wrapper)
+    graph.add_node("profiling_agent", _profiling_wrapper)
     graph.add_node("echo", _echo_wrapper)
     graph.add_node("response", _response_wrapper)
 
@@ -113,6 +124,7 @@ def _build_graph():
         {
             "communications_agent": "communications_agent",
             "agenda_agent": "agenda_agent",
+            "profiling_agent": "profiling_agent",
             "echo": "echo",
             "response": "response",
         },
@@ -120,6 +132,7 @@ def _build_graph():
 
     graph.add_edge("communications_agent", "response")
     graph.add_edge("agenda_agent", "response")
+    graph.add_edge("profiling_agent", "response")
     graph.add_edge("echo", "response")
     graph.add_edge("response", END)
 
